@@ -27,6 +27,6 @@ WAKE_WORD = "karios"
 STT_SAMPLE_RATE = 16000
 
 LLM_ENABLED = True
-LLM_MODEL = "gpt-4o-mini"
+LLM_MODEL = "google/gemini-2.5-flash"
 
 DEBUG = True

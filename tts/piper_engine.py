@@ -47,7 +47,7 @@ class PiperTTS:
             )
 
         except subprocess.CalledProcessError as e:
-            print("[TTS] Piper failed:", e.stderr.decode() if e.stderr else e)
+            print("[TTS] Piper failed:", e.stderr if e.stderr else e)
 
         finally:
             # Cleanup AFTER playback
