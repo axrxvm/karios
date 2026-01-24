@@ -1,5 +1,6 @@
 openai>=1.6.0
 python-dotenv>=1.0.0
 vosk>=0.3.45
-pyaudio>=0.2.14
+sounddevice>=0.4.6
+soundfile>=0.12.1
 psutil>=5.9.0
