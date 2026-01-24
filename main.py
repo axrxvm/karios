@@ -5,7 +5,7 @@ from core.state import STATE
 
 
 VOSK_MODEL_PATH = "models/vosk"
-PIPER_MODEL_PATH = "models/piper/en_US-ryan-medium.onnx"
+PIPER_MODEL_PATH = "models/piper/en_US-ryan-high.onnx"
 
 
 def get_input(stt: VoskSTT) -> str:
