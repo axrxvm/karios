@@ -1,4 +1,7 @@
+import logging
 from typing import Callable, List, Optional, Dict, Any
+
+logger = logging.getLogger(__name__)
 
 
 class Intent:
@@ -10,6 +13,7 @@ class Intent:
         description: str = "",
         takes_argument: bool = False,
     ):
+        logger.debug(f"Intent created: {name} (keywords={keywords}, takes_argument={takes_argument})")
         self.name = name
         self.keywords = keywords
         self.executor = executor
@@ -21,6 +25,14 @@ class Intent:
         return True
 
     def execute(self, arg: Optional[str] = None) -> str:
-        if self.takes_argument:
-            return self.executor(arg)
-        return self.executor()
+        logger.debug(f"Executing intent '{self.name}' with arg={arg}")
+        try:
+            if self.takes_argument:
+                result = self.executor(arg)
+            else:
+                result = self.executor()
+            logger.debug(f"Intent '{self.name}' execution successful: {result}")
+            return result
+        except Exception as e:
+            logger.error(f"Intent '{self.name}' execution failed: {e}", exc_info=True)
+            raise

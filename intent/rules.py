@@ -1,3 +1,4 @@
+import logging
 from intent.intents import Intent
 from tools.general import (
     get_time,
@@ -18,7 +19,9 @@ from tools.os_linux import (
     mute_volume,
 )
 
+logger = logging.getLogger(__name__)
 
+logger.debug("Building INTENTS list...")
 INTENTS = [
 
     # ===== TIME / DATE =====
@@ -126,3 +129,5 @@ INTENTS = [
         description="Mute volume",
     ),
 ]
+
+logger.info(f"Loaded {len(INTENTS)} intents")
