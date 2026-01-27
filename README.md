@@ -1,6 +1,6 @@
 # Karios
 
-> ⚠️ WORK IN PROGRESS — v0.1  
+> WORK IN PROGRESS — v0.1  
 > Expect breaking changes, rough edges, and rapid iteration.
 
 Karios is a local-first, voice-controlled AI assistant with intelligent intent routing.
