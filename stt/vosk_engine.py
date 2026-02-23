@@ -9,12 +9,12 @@ logger = logging.getLogger(__name__)
 
 class VoskSTT:
     def __init__(self, model_path: str):
-        logger.info(f"Initializing VoskSTT with model_path: {model_path}")
-        logger.debug(f"Loading Vosk model from {model_path}...")
+        logger.info("Initializing VoskSTT")
+        logger.debug("Loading Vosk model from %s", model_path)
         self.model = Model(model_path)
         logger.info("Vosk model loaded successfully")
         
-        logger.debug(f"Creating KaldiRecognizer with sample rate: {STT_SAMPLE_RATE}")
+        logger.debug("Creating KaldiRecognizer with sample rate: %d", STT_SAMPLE_RATE)
         self.recognizer = KaldiRecognizer(self.model, STT_SAMPLE_RATE)
         logger.info("KaldiRecognizer created")
 
@@ -42,14 +42,14 @@ class VoskSTT:
         iteration = 0
         while True:
             iteration += 1
-            if iteration % 100 == 0:
-                logger.debug(f"Still listening... (iteration {iteration})")
+            if logger.isEnabledFor(logging.DEBUG) and iteration % 100 == 0:
+                logger.debug("Still listening... (iteration %d)", iteration)
             data = self.stream.read(4000, exception_on_overflow=False)
             if self.recognizer.AcceptWaveform(data):
                 logger.debug("Speech detected, processing...")
                 result = json.loads(self.recognizer.Result())
                 text = result.get("text", "").strip()
-                logger.info(f"Speech recognized: {text}")
+                logger.info("Speech recognized")
                 return text
 
     def close(self):

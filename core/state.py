@@ -13,7 +13,7 @@ class KariosState:
     listening: bool = False
     
     def __setattr__(self, name, value):
-        logger.debug(f"STATE.{name} = {value}")
+        logger.debug("STATE.%s updated", name)
         super().__setattr__(name, value)
 
 

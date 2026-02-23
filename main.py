@@ -1,4 +1,5 @@
 import logging
+from uuid import uuid4
 from core.router import route
 from stt.vosk_engine import VoskSTT
 from tts.piper_engine import PiperTTS
@@ -13,6 +14,8 @@ logging.basicConfig(
     filemode='a'
 )
 logger = logging.getLogger(__name__)
+
+EXIT_WORDS = {"exit", ":q", "quit"}
 
 logger.debug(f"VOSK_MODEL_PATH set to: {VOSK_MODEL_PATH}")
 logger.debug(f"PIPER_MODEL_PATH set to: {PIPER_MODEL_PATH}")
@@ -56,6 +59,8 @@ def main():
 
     logger.debug("Speaking initial greeting")
     tts.speak("Hello Sir, how may I help you?")
+    session_id = str(uuid4())
+    logger.info("Session started: %s", session_id)
 
     try:
         logger.info("Entering main loop")
@@ -67,31 +72,31 @@ def main():
                 logger.debug("Empty input received, continuing loop")
                 continue
 
-            if text.lower() in {"exit", ":q", "quit"}:
-                logger.info(f"Exit command received: {text}")
+            if text.lower() in EXIT_WORDS:
+                logger.info("Exit command received")
                 break
 
             print(f"You: {text}")
-            logger.info(f"User input: {text}")
+            logger.info("User input received")
             STATE.last_user_text = text
-            logger.debug(f"Updated STATE.last_user_text: {text}")
+            logger.debug("Updated STATE.last_user_text")
 
             logger.debug("Routing user input...")
-            result = route(text)
-            logger.debug(f"Route result - handled_locally: {result.handled_locally}")
+            result = route(text, session_id=session_id)
+            logger.debug("Route result - handled_locally: %s", result.handled_locally)
 
             if result.handled_locally and result.action:
-                logger.debug(f"Executing local action with arg: {result.arg}")
+                logger.debug("Executing local action")
                 response = result.action(result.arg)
-                logger.debug(f"Local action response: {response}")
+                logger.debug("Local action response ready")
             else:
                 logger.debug("Using LLM response")
                 response = result.text
 
             STATE.last_response = response
-            logger.debug(f"Updated STATE.last_response: {response}")
+            logger.debug("Updated STATE.last_response")
             print(f"Karios: {response}")
-            logger.info(f"Karios response: {response}")
+            logger.info("Karios response sent")
 
             logger.debug("Speaking response...")
             tts.speak(response)
