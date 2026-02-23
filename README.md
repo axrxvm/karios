@@ -1,5 +1,6 @@
 # Karios
 
+> [!IMPORTANT]
 > WORK IN PROGRESS — v0.1  
 > Expect breaking changes, rough edges, and rapid iteration.
 
