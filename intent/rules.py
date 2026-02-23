@@ -8,7 +8,7 @@ from tools.general import (
     get_cpu_usage,
     get_memory_usage,
 )
-from tools.os_linux import (
+from tools.os_tools import (
     open_app,
     close_app,
     lock_screen,

@@ -3,18 +3,16 @@ from core.router import route
 from stt.vosk_engine import VoskSTT
 from tts.piper_engine import PiperTTS
 from core.state import STATE
+from core.config import LOG_LEVEL, VOSK_MODEL_PATH, PIPER_MODEL_PATH
 
 
 logging.basicConfig(
-    level=logging.DEBUG,
+    level=getattr(logging, LOG_LEVEL, logging.INFO),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     filename='karios.log',
     filemode='a'
 )
 logger = logging.getLogger(__name__)
-
-VOSK_MODEL_PATH = "models/vosk"
-PIPER_MODEL_PATH = "models/piper/en_US-lessac-medium.onnx"
 
 logger.debug(f"VOSK_MODEL_PATH set to: {VOSK_MODEL_PATH}")
 logger.debug(f"PIPER_MODEL_PATH set to: {PIPER_MODEL_PATH}")

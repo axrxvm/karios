@@ -1,15 +1,8 @@
-import os
 import logging
 from typing import Optional
-from dotenv import load_dotenv
-from core.config import LLM_MODEL, LLM_ENABLED
+from core.config import LLM_MODEL, LLM_ENABLED, OPENAI_API_KEY, OPENAI_API_BASE
 
 logger = logging.getLogger(__name__)
-
-# Load .env into environment variables
-logger.debug("Loading environment variables from .env...")
-load_dotenv()
-logger.debug(".env file loaded")
 
 try:
     from openai import OpenAI
@@ -60,8 +53,8 @@ def _get_client() -> Optional["OpenAI"]:
         return _client
 
     logger.debug("Creating new OpenAI client...")
-    api_key = os.getenv("OPENAI_API_KEY")
-    api_base = os.getenv("OPENAI_API_BASE")
+    api_key = OPENAI_API_KEY
+    api_base = OPENAI_API_BASE or None
     logger.debug(f"API base URL: {api_base}")
 
     if not api_key:

@@ -25,6 +25,36 @@ whether that means executing a local command instantly or escalating to deeper r
 - Cross-platform support (Windows, Linux, macOS)
 - Native system command execution
 
+## Quick Start
+
+1. Create and activate a virtual environment.
+2. Install dependencies:
+   `pip install -r requirements.txt`
+3. Install the `piper` CLI and download models under `models/`.
+4. Copy `.env.example` to `.env` and set values.
+5. Run:
+   `python main.py`
+
+## Configuration
+
+Karios now expects configuration from `.env` (see `.env.example`):
+
+- `KARIOS_DEBUG`
+- `KARIOS_LOG_LEVEL`
+- `KARIOS_LLM_ENABLED`
+- `KARIOS_LLM_MODEL`
+- `KARIOS_STT_SAMPLE_RATE`
+- `KARIOS_WAKE_WORD`
+- `KARIOS_VOSK_MODEL_PATH`
+- `KARIOS_PIPER_MODEL_PATH`
+- `KARIOS_ALLOW_POWER_ACTIONS`
+- `KARIOS_REQUIRE_POWER_CONFIRMATION`
+
+LLM credentials:
+
+- `OPENAI_API_KEY` (required if `KARIOS_LLM_ENABLED=true`)
+- `OPENAI_API_BASE` (optional)
+
 ## License
 
 MIT License © 2026 Aarav Mehta

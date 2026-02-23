@@ -1,128 +1,137 @@
 import logging
+import re
+import shutil
 import subprocess
-import os
-import signal
+
+from core.config import ALLOW_POWER_ACTIONS, POWER_CONFIRMATION_REQUIRED
 
 logger = logging.getLogger(__name__)
 
-
 APP_ALIASES = {
-    # Browsers
     "chrome": ["google-chrome", "google-chrome-stable", "chromium", "chromium-browser"],
     "firefox": ["firefox"],
     "brave": ["brave-browser", "brave"],
     "edge": ["microsoft-edge"],
-
-    # Dev
     "vscode": ["code"],
     "code": ["code"],
     "terminal": ["gnome-terminal", "konsole", "xfce4-terminal"],
     "editor": ["nano", "vim"],
-
-    # Media
     "spotify": ["spotify"],
     "vlc": ["vlc"],
     "music": ["spotify", "vlc"],
-
-    # System
     "files": ["nautilus", "dolphin", "thunar"],
     "settings": ["gnome-control-center"],
 }
 
+_ALLOWED_APP_RE = re.compile(r"^[A-Za-z0-9._+-]+$")
 
-def _find_binary(app: str):
-    logger.debug(f"_find_binary() called for app: {app}")
-    binaries = APP_ALIASES.get(app, [app])
-    logger.debug(f"Trying binaries: {binaries}")
-    for binary in binaries:
-        try:
-            logger.debug(f"Attempting to launch: {binary}")
-            subprocess.Popen([binary])
-            logger.info(f"Successfully launched: {binary}")
-            return True
-        except FileNotFoundError:
-            logger.debug(f"Binary not found: {binary}")
-            continue
-    logger.warning(f"No binary found for app: {app}")
-    return False
+
+def _validate_app_name(app: str) -> bool:
+    return bool(app and _ALLOWED_APP_RE.fullmatch(app))
+
+
+def _resolve_binaries(app: str):
+    return APP_ALIASES.get(app, [app])
+
+
+def _first_installed_binary(app: str):
+    for binary in _resolve_binaries(app):
+        if shutil.which(binary):
+            return binary
+    return None
+
+
+def _confirm_power_action(action: str) -> bool:
+    if not ALLOW_POWER_ACTIONS:
+        logger.warning("Power action blocked by config: %s", action)
+        return False
+
+    if not POWER_CONFIRMATION_REQUIRED:
+        return True
+
+    try:
+        answer = input(f"Confirm {action}. Type YES to continue: ").strip()
+    except EOFError:
+        logger.warning("Power action confirmation failed due to EOF")
+        return False
+
+    return answer == "YES"
 
 
 def open_app(app: str) -> str:
-    logger.info(f"open_app() called with app: {app}")
-    if not app:
-        logger.warning("No application specified")
-        return "No application specified"
+    logger.info("open_app() called with app: %s", app)
+    if not _validate_app_name(app):
+        return "Invalid application name"
 
-    if _find_binary(app):
-        result = f"Opening {app}"
-        logger.info(result)
-        return result
+    binary = _first_installed_binary(app)
+    if not binary:
+        return f"Failed to open {app}"
 
-    result = f"Failed to open {app}"
-    logger.error(result)
-    return result
+    try:
+        subprocess.Popen([binary])
+        return f"Opening {app}"
+    except Exception:
+        logger.exception("Failed to open app: %s", app)
+        return f"Failed to open {app}"
 
 
 def close_app(app: str) -> str:
-    logger.info(f"close_app() called with app: {app}")
-    try:
-        logger.debug(f"Running pkill -f {app}")
-        result_proc = subprocess.run(["pkill", "-f", app], check=False)
-        logger.debug(f"pkill return code: {result_proc.returncode}")
-        result = f"Closed {app}"
-        logger.info(result)
-        return result
-    except Exception as e:
-        result = f"Failed to close {app}"
-        logger.error(f"{result}: {e}", exc_info=True)
-        return result
+    logger.info("close_app() called with app: %s", app)
+    if not _validate_app_name(app):
+        return "Invalid application name"
+
+    closed_any = False
+    for binary in _resolve_binaries(app):
+        result_proc = subprocess.run(["pkill", "-x", binary], check=False)
+        if result_proc.returncode == 0:
+            closed_any = True
+
+    if closed_any:
+        return f"Closed {app}"
+    return f"No running process found for {app}"
 
 
 def lock_screen() -> str:
     logger.info("lock_screen() called")
-    logger.debug("Executing loginctl lock-session")
     subprocess.Popen(["loginctl", "lock-session"])
-    result = "Screen locked"
-    logger.info(result)
-    return result
+    return "Screen locked"
 
 
 def reboot() -> str:
     logger.info("reboot() called")
-    logger.warning("SYSTEM REBOOT INITIATED")
+    if not _confirm_power_action("system reboot"):
+        if not ALLOW_POWER_ACTIONS:
+            return "Power actions are disabled in config"
+        return "Reboot cancelled"
+
     subprocess.Popen(["systemctl", "reboot"])
     return "Rebooting system"
 
 
 def shutdown() -> str:
     logger.info("shutdown() called")
-    logger.warning("SYSTEM SHUTDOWN INITIATED")
+    if not _confirm_power_action("system shutdown"):
+        if not ALLOW_POWER_ACTIONS:
+            return "Power actions are disabled in config"
+        return "Shutdown cancelled"
+
     subprocess.Popen(["systemctl", "poweroff"])
     return "Shutting down system"
 
 
 def volume_up() -> str:
     logger.info("volume_up() called")
-    logger.debug("Increasing volume by 5%")
-    subprocess.run(["pactl", "set-sink-volume", "@DEFAULT_SINK@", "+5%"])
-    result = "Volume increased"
-    logger.info(result)
-    return result
+    subprocess.run(["pactl", "set-sink-volume", "@DEFAULT_SINK@", "+5%"], check=False)
+    return "Volume increased"
 
 
 def volume_down() -> str:
     logger.info("volume_down() called")
-    logger.debug("Decreasing volume by 5%")
-    subprocess.run(["pactl", "set-sink-volume", "@DEFAULT_SINK@", "-5%"])
-    result = "Volume decreased"
-    logger.info(result)
-    return result
+    subprocess.run(["pactl", "set-sink-volume", "@DEFAULT_SINK@", "-5%"], check=False)
+    return "Volume decreased"
 
 
 def mute_volume() -> str:
     logger.info("mute_volume() called")
-    logger.debug("Toggling mute")
-    subprocess.run(["pactl", "set-sink-mute", "@DEFAULT_SINK@", "toggle"])
-    result = "Volume muted"
-    logger.info(result)
-    return result
+    subprocess.run(["pactl", "set-sink-mute", "@DEFAULT_SINK@", "toggle"], check=False)
+    return "Volume muted"
