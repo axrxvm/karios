@@ -87,11 +87,25 @@ def _get_optional_float(name: str, default: float) -> float:
         raise RuntimeError(f"Invalid float for {name}: {value}") from exc
 
 
+def _get_optional_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None or not value.strip():
+        return default
+    lowered = value.strip().lower()
+    if lowered in {"1", "true", "yes", "on"}:
+        return True
+    if lowered in {"0", "false", "no", "off"}:
+        return False
+    raise RuntimeError(f"Invalid boolean for {name}: {value}")
+
+
 WAKE_WORD = _require_env("KARIOS_WAKE_WORD")
 logger.debug(f"WAKE_WORD set to: {WAKE_WORD}")
 
 STT_SAMPLE_RATE = _get_int("KARIOS_STT_SAMPLE_RATE")
 logger.debug(f"STT_SAMPLE_RATE set to: {STT_SAMPLE_RATE}")
+STT_KEEP_STREAM_OPEN = _get_optional_bool("KARIOS_STT_KEEP_STREAM_OPEN", False)
+logger.debug(f"STT_KEEP_STREAM_OPEN set to: {STT_KEEP_STREAM_OPEN}")
 
 VOSK_MODEL_PATH = _require_env("KARIOS_VOSK_MODEL_PATH")
 PIPER_MODEL_PATH = _require_env("KARIOS_PIPER_MODEL_PATH")
@@ -102,13 +116,15 @@ PIPER_NOISE_SCALE = _get_optional_float("KARIOS_PIPER_NOISE_SCALE", 0.667)
 PIPER_NOISE_W = _get_optional_float("KARIOS_PIPER_NOISE_W", 0.8)
 PIPER_SENTENCE_SILENCE = _get_optional_float("KARIOS_PIPER_SENTENCE_SILENCE", 0.25)
 PIPER_SPEAKER_ID = _get_optional_int("KARIOS_PIPER_SPEAKER_ID")
+PIPER_TTS_CACHE_SIZE = _get_optional_int("KARIOS_PIPER_TTS_CACHE_SIZE") or 16
 logger.debug(
-    "PIPER_LENGTH_SCALE=%s, PIPER_NOISE_SCALE=%s, PIPER_NOISE_W=%s, PIPER_SENTENCE_SILENCE=%s, PIPER_SPEAKER_ID=%s",
+    "PIPER_LENGTH_SCALE=%s, PIPER_NOISE_SCALE=%s, PIPER_NOISE_W=%s, PIPER_SENTENCE_SILENCE=%s, PIPER_SPEAKER_ID=%s, PIPER_TTS_CACHE_SIZE=%s",
     PIPER_LENGTH_SCALE,
     PIPER_NOISE_SCALE,
     PIPER_NOISE_W,
     PIPER_SENTENCE_SILENCE,
     PIPER_SPEAKER_ID,
+    PIPER_TTS_CACHE_SIZE,
 )
 
 LLM_ENABLED = _get_bool("KARIOS_LLM_ENABLED")

@@ -45,6 +45,7 @@ Karios now expects configuration from `.env` (see `.env.example`):
 - `KARIOS_LLM_ENABLED`
 - `KARIOS_LLM_MODEL`
 - `KARIOS_STT_SAMPLE_RATE`
+- `KARIOS_STT_KEEP_STREAM_OPEN` (optional, default `false`; set `true` for lower listen startup latency)
 - `KARIOS_WAKE_WORD`
 - `KARIOS_VOSK_MODEL_PATH`
 - `KARIOS_PIPER_MODEL_PATH`
@@ -53,6 +54,7 @@ Karios now expects configuration from `.env` (see `.env.example`):
 - `KARIOS_PIPER_NOISE_W`
 - `KARIOS_PIPER_SENTENCE_SILENCE`
 - `KARIOS_PIPER_SPEAKER_ID` (optional, for multi-speaker models)
+- `KARIOS_PIPER_TTS_CACHE_SIZE` (optional, default `16`; set `0` to disable cache)
 - `KARIOS_ALLOW_POWER_ACTIONS`
 - `KARIOS_REQUIRE_POWER_CONFIRMATION`
 
