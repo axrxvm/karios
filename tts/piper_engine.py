@@ -14,10 +14,6 @@ class PiperTTS:
     def __init__(
         self,
         model_path: str,
-        length_scale: float = 1.0,
-        noise_scale: float = 0.667,
-        noise_w: float = 0.8,
-        sentence_silence: float = 0.25,
         speaker_id: int | None = None,
     ):
         logger.info("Initializing PiperTTS")
@@ -29,30 +25,14 @@ class PiperTTS:
             raise FileNotFoundError(self.model_path)
         logger.info("Model file exists")
 
-        self.length_scale = str(length_scale)
-        self.noise_scale = str(noise_scale)
-        self.noise_w = str(noise_w)
-        self.sentence_silence = str(sentence_silence)
-
         self._piper_cmd = [
             "piper",
             "--model", self.model_path,
-            "--length_scale", self.length_scale,
-            "--noise_scale", self.noise_scale,
-            "--noise_w", self.noise_w,
-            "--sentence_silence", self.sentence_silence,
         ]
         if speaker_id is not None:
             self._piper_cmd.extend(["--speaker", str(speaker_id)])
 
-        logger.debug("Length scale set to: %s", self.length_scale)
-        logger.debug(
-            "Piper params: noise_scale=%s, noise_w=%s, sentence_silence=%s, speaker_id=%s",
-            self.noise_scale,
-            self.noise_w,
-            self.sentence_silence,
-            speaker_id,
-        )
+        logger.debug("Piper speaker_id=%s", speaker_id)
 
         logger.debug("Setting environment variables...")
         os.environ.setdefault("OMP_NUM_THREADS", "1")
@@ -194,12 +174,11 @@ class PiperTTS:
             err = proc.stderr
 
             if proc.returncode != 0:
-                logger.warning("Piper failed with enhanced args. Falling back to baseline args")
+                logger.warning("Piper failed. Falling back to baseline args")
                 fallback_cmd = [
                     "piper",
                     "--model", self.model_path,
                     "--output_file", wav_path,
-                    "--length_scale", self.length_scale,
                 ]
                 proc = subprocess.run(
                     fallback_cmd,

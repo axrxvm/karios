@@ -8,10 +8,6 @@ from core.config import (
     LOG_LEVEL,
     VOSK_MODEL_PATH,
     PIPER_MODEL_PATH,
-    PIPER_LENGTH_SCALE,
-    PIPER_NOISE_SCALE,
-    PIPER_NOISE_W,
-    PIPER_SENTENCE_SILENCE,
     PIPER_SPEAKER_ID,
 )
 
@@ -65,10 +61,6 @@ def main():
     logger.debug("Initializing PiperTTS...")
     tts = PiperTTS(
         PIPER_MODEL_PATH,
-        length_scale=PIPER_LENGTH_SCALE,
-        noise_scale=PIPER_NOISE_SCALE,
-        noise_w=PIPER_NOISE_W,
-        sentence_silence=PIPER_SENTENCE_SILENCE,
         speaker_id=PIPER_SPEAKER_ID,
     )
     logger.info("PiperTTS initialized successfully")
