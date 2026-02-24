@@ -50,8 +50,43 @@ class PiperTTS:
             devices = miniaudio.Devices().get_playbacks()
             if not devices:
                 return None, None
-            default = next((d for d in devices if d.get("is_default")), None)
-            chosen = default or devices[0]
+
+            if len(devices) == 1:
+                only = devices[0]
+                return only.get("id"), only.get("name")
+
+            default_index = next(
+                (index for index, device in enumerate(devices, start=1) if device.get("is_default")),
+                1,
+            )
+
+            print("[TTS] Multiple audio output devices detected:")
+            for index, device in enumerate(devices, start=1):
+                name = device.get("name", "Unknown Device")
+                suffix = " (default)" if index == default_index else ""
+                print(f"  {index}. {name}{suffix}")
+
+            try:
+                selection = input(
+                    f"[TTS] Select output device [1-{len(devices)}] (default {default_index}): "
+                ).strip()
+            except EOFError:
+                selection = ""
+
+            if not selection:
+                chosen_index = default_index
+            else:
+                try:
+                    chosen_index = int(selection)
+                except ValueError:
+                    print(f"[TTS] Invalid selection '{selection}'. Using default {default_index}.")
+                    chosen_index = default_index
+                else:
+                    if not 1 <= chosen_index <= len(devices):
+                        print(f"[TTS] Selection out of range. Using default {default_index}.")
+                        chosen_index = default_index
+
+            chosen = devices[chosen_index - 1]
             return chosen.get("id"), chosen.get("name")
         except Exception:
             return None, None
