@@ -1,6 +1,8 @@
 import json
 import logging
-import pyaudio
+import queue
+
+import miniaudio
 from vosk import Model, KaldiRecognizer
 from core.config import STT_SAMPLE_RATE
 
@@ -18,20 +20,53 @@ class VoskSTT:
         self.recognizer = KaldiRecognizer(self.model, STT_SAMPLE_RATE)
         logger.info("KaldiRecognizer created")
 
-        logger.debug("Initializing PyAudio...")
-        self.audio = pyaudio.PyAudio()
-        logger.debug("Opening audio stream...")
-        self.stream = self.audio.open(
-            format=pyaudio.paInt16,
-            channels=1,
-            rate=STT_SAMPLE_RATE,
-            input=True,
-            frames_per_buffer=8000,
-        )
-        logger.info("Audio stream opened")
+        self._audio_queue: queue.Queue[bytes] = queue.Queue(maxsize=64)
+        self._capture_generator = self._capture_callback()
+        next(self._capture_generator)
 
-        self.stream.start_stream()
-        logger.info("VoskSTT initialized and audio stream started")
+        capture_device_id = self._select_capture_device_id()
+        if capture_device_id is None:
+            raise RuntimeError("No input audio device available")
+
+        self.capture_device = miniaudio.CaptureDevice(
+            input_format=miniaudio.SampleFormat.SIGNED16,
+            nchannels=1,
+            sample_rate=STT_SAMPLE_RATE,
+            device_id=capture_device_id,
+        )
+        self.capture_device.start(self._capture_generator)
+        logger.info("VoskSTT initialized and capture stream started")
+
+    def _select_capture_device_id(self):
+        try:
+            devices = miniaudio.Devices().get_captures()
+            if not devices:
+                return None
+            default = next((d for d in devices if d.get("is_default")), None)
+            return (default or devices[0]).get("id")
+        except Exception:
+            return None
+
+    def _capture_callback(self):
+        while True:
+            data = yield
+            if data is None:
+                continue
+            if isinstance(data, (bytes, bytearray, memoryview)):
+                chunk = bytes(data)
+            elif hasattr(data, "tobytes"):
+                chunk = data.tobytes()
+            else:
+                chunk = bytes(data)
+
+            try:
+                self._audio_queue.put_nowait(chunk)
+            except queue.Full:
+                try:
+                    self._audio_queue.get_nowait()
+                except queue.Empty:
+                    pass
+                self._audio_queue.put_nowait(chunk)
 
     def listen(self) -> str:
         """
@@ -39,12 +74,22 @@ class VoskSTT:
         Returns recognized text or empty string.
         """
         logger.debug("listen() called - waiting for speech...")
+        while not self._audio_queue.empty():
+            try:
+                self._audio_queue.get_nowait()
+            except queue.Empty:
+                break
+
+        if hasattr(self.recognizer, "Reset"):
+            self.recognizer.Reset()
+
         iteration = 0
         while True:
             iteration += 1
             if logger.isEnabledFor(logging.DEBUG) and iteration % 100 == 0:
                 logger.debug("Still listening... (iteration %d)", iteration)
-            data = self.stream.read(4000, exception_on_overflow=False)
+
+            data = self._audio_queue.get()
             if self.recognizer.AcceptWaveform(data):
                 logger.debug("Speech detected, processing...")
                 result = json.loads(self.recognizer.Result())
@@ -54,10 +99,6 @@ class VoskSTT:
 
     def close(self):
         logger.info("Closing VoskSTT...")
-        logger.debug("Stopping audio stream...")
-        self.stream.stop_stream()
-        logger.debug("Closing audio stream...")
-        self.stream.close()
-        logger.debug("Terminating PyAudio...")
-        self.audio.terminate()
+        self.capture_device.stop()
+        self.capture_device.close()
         logger.info("VoskSTT closed successfully")

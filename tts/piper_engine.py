@@ -1,10 +1,10 @@
 import subprocess
 import logging
-import sounddevice as sd
-import soundfile as sf
+import miniaudio
 import os
 import re
 import tempfile
+import time
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -57,47 +57,83 @@ class PiperTTS:
         logger.debug("Setting environment variables...")
         os.environ.setdefault("OMP_NUM_THREADS", "1")
         os.environ.setdefault("ONNX_NUM_THREADS", "1")
+        self._output_device_id, output_name = self._select_output_device()
+        if self._output_device_id is not None:
+            logger.info("Using TTS output device: %s", output_name)
+        else:
+            logger.warning("No TTS output device detected during initialization")
         logger.info("PiperTTS initialized successfully")
 
-    def _select_output_device(self) -> int | None:
-        """Return a usable output device index, or None if unavailable."""
+    def _select_output_device(self):
+        """Return (device_id, device_name) for a usable output device."""
         try:
-            default_device = sd.default.device
-            if isinstance(default_device, (list, tuple)) and len(default_device) > 1:
-                output_device = default_device[1]
-            else:
-                output_device = default_device
-
-            if output_device is not None and int(output_device) >= 0:
-                info = sd.query_devices(int(output_device))
-                if info.get("max_output_channels", 0) > 0:
-                    return int(output_device)
+            devices = miniaudio.Devices().get_playbacks()
+            if not devices:
+                return None, None
+            default = next((d for d in devices if d.get("is_default")), None)
+            chosen = default or devices[0]
+            return chosen.get("id"), chosen.get("name")
         except Exception:
-            pass
+            return None, None
 
-        try:
-            devices = sd.query_devices()
-            for index, info in enumerate(devices):
-                if info.get("max_output_channels", 0) > 0:
-                    return index
-        except Exception:
-            return None
+    def _safe_playback_stream(self, file_stream, nchannels: int):
+        """
+        Ensure every callback returns exactly the requested frame count.
+        This prevents garbage audio from partially-unwritten output buffers.
+        """
+        sample_width = miniaudio.width_from_format(miniaudio.SampleFormat.SIGNED16)
+        bytes_per_frame = nchannels * sample_width
+        required_frames = yield b""
+        while True:
+            target_bytes = max(int(required_frames or 0), 0) * bytes_per_frame
+            try:
+                chunk = file_stream.send(required_frames)
+                chunk_bytes = bytes(chunk)
+            except StopIteration:
+                chunk_bytes = b""
 
-        return None
+            if target_bytes > 0 and len(chunk_bytes) < target_bytes:
+                chunk_bytes += b"\x00" * (target_bytes - len(chunk_bytes))
+            elif target_bytes > 0 and len(chunk_bytes) > target_bytes:
+                chunk_bytes = chunk_bytes[:target_bytes]
 
-    def _play_audio(self, data, sr: int) -> bool:
+            required_frames = yield chunk_bytes
+
+    def _play_audio(self, wav_path: str) -> bool:
         """Play audio if an output device exists."""
-        output_device = self._select_output_device()
-        if output_device is None:
+        device_id = self._output_device_id
+        if device_id is None:
             logger.warning("No output audio device available; skipping playback")
             print("[TTS] No output audio device available; skipping playback")
             return False
 
         try:
-            sd.play(data, sr, device=output_device)
-            sd.wait()
+            info = miniaudio.get_file_info(wav_path)
+            file_stream = miniaudio.stream_file(
+                wav_path,
+                output_format=miniaudio.SampleFormat.SIGNED16,
+                nchannels=info.nchannels,
+                sample_rate=info.sample_rate,
+                frames_to_read=2048,
+            )
+            stream = self._safe_playback_stream(file_stream, info.nchannels)
+            next(stream)
+
+            playback = miniaudio.PlaybackDevice(
+                output_format=miniaudio.SampleFormat.SIGNED16,
+                nchannels=info.nchannels,
+                sample_rate=info.sample_rate,
+                buffersize_msec=300,
+                device_id=device_id,
+            )
+            playback.start(stream)
+            # Allow full playback plus a small drain window before stopping.
+            time.sleep(max(info.duration, 0.0) + 0.35)
+            playback.stop()
+            playback.close()
+            file_stream.close()
             return True
-        except sd.PortAudioError as exc:
+        except Exception as exc:
             logger.error("Audio playback failed: %s", exc)
             print(f"[TTS] Audio playback failed: {exc}")
             return False
@@ -185,17 +221,8 @@ class PiperTTS:
                 return
             logger.debug("Audio file produced: %d bytes", os.path.getsize(wav_path))
 
-            logger.debug("Decoding WAV data...")
-            data, sr = sf.read(wav_path, dtype="float32")
-            logger.debug("Audio decoded: sample_rate=%d, samples=%d", sr, data.size)
-
-            if data.size == 0:
-                logger.error("Empty audio buffer after decoding")
-                print("[TTS] Empty audio buffer")
-                return
-
             logger.debug("Playing audio...")
-            if self._play_audio(data, sr):
+            if self._play_audio(wav_path):
                 logger.info("Audio playback completed")
         finally:
             try:
