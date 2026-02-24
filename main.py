@@ -4,7 +4,16 @@ from core.router import route
 from stt.vosk_engine import VoskSTT
 from tts.piper_engine import PiperTTS
 from core.state import STATE
-from core.config import LOG_LEVEL, VOSK_MODEL_PATH, PIPER_MODEL_PATH
+from core.config import (
+    LOG_LEVEL,
+    VOSK_MODEL_PATH,
+    PIPER_MODEL_PATH,
+    PIPER_LENGTH_SCALE,
+    PIPER_NOISE_SCALE,
+    PIPER_NOISE_W,
+    PIPER_SENTENCE_SILENCE,
+    PIPER_SPEAKER_ID,
+)
 
 
 logging.basicConfig(
@@ -54,11 +63,18 @@ def main():
     logger.info("VoskSTT initialized successfully")
     
     logger.debug("Initializing PiperTTS...")
-    tts = PiperTTS(PIPER_MODEL_PATH)
+    tts = PiperTTS(
+        PIPER_MODEL_PATH,
+        length_scale=PIPER_LENGTH_SCALE,
+        noise_scale=PIPER_NOISE_SCALE,
+        noise_w=PIPER_NOISE_W,
+        sentence_silence=PIPER_SENTENCE_SILENCE,
+        speaker_id=PIPER_SPEAKER_ID,
+    )
     logger.info("PiperTTS initialized successfully")
 
     logger.debug("Speaking initial greeting")
-    tts.speak("Hello Sir, how may I help you?")
+    tts.speak("Hi, how can I help you today?")
     session_id = str(uuid4())
     logger.info("Session started: %s", session_id)
 
