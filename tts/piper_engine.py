@@ -5,10 +5,7 @@ import soundfile as sf
 import io
 import os
 import re
-from collections import OrderedDict
 from pathlib import Path
-
-from core.config import PIPER_TTS_CACHE_SIZE
 
 logger = logging.getLogger(__name__)
 
@@ -61,8 +58,6 @@ class PiperTTS:
         logger.debug("Setting environment variables...")
         os.environ.setdefault("OMP_NUM_THREADS", "1")
         os.environ.setdefault("ONNX_NUM_THREADS", "1")
-        self.cache_size = max(0, PIPER_TTS_CACHE_SIZE)
-        self._audio_cache = OrderedDict()
         logger.info("PiperTTS initialized successfully")
 
     def _normalize_text(self, text: str) -> str:
@@ -97,67 +92,55 @@ class PiperTTS:
             logger.debug("Text became empty after normalization, skipping speech")
             return
 
-        cached = self._audio_cache.get(normalized_text)
-        if cached is not None:
-            data, sr = cached
-            self._audio_cache.move_to_end(normalized_text)
-            logger.debug("TTS cache hit")
-        else:
-            logger.debug("TTS cache miss, starting piper subprocess")
-            try:
-                proc = subprocess.run(
-                    self._piper_cmd,
-                    input=normalized_text.encode("utf-8"),
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    check=False,
-                )
-            except FileNotFoundError:
-                logger.error("piper binary not found")
-                print("[TTS] Piper CLI not found in PATH")
-                return
+        logger.debug("Starting piper subprocess")
+        try:
+            proc = subprocess.run(
+                self._piper_cmd,
+                input=normalized_text.encode("utf-8"),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+        except FileNotFoundError:
+            logger.error("piper binary not found")
+            print("[TTS] Piper CLI not found in PATH")
+            return
 
+        wav_bytes = proc.stdout
+        err = proc.stderr
+
+        if proc.returncode != 0:
+            logger.warning("Piper failed with enhanced args. Falling back to baseline args")
+            fallback_cmd = [
+                "piper",
+                "--model", self.model_path,
+                "--output_file", "-",
+                "--length_scale", self.length_scale,
+            ]
+            proc = subprocess.run(
+                fallback_cmd,
+                input=normalized_text.encode("utf-8"),
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
             wav_bytes = proc.stdout
             err = proc.stderr
 
-            if proc.returncode != 0:
-                logger.warning("Piper failed with enhanced args. Falling back to baseline args")
-                fallback_cmd = [
-                    "piper",
-                    "--model", self.model_path,
-                    "--output_file", "-",
-                    "--length_scale", self.length_scale,
-                ]
-                proc = subprocess.run(
-                    fallback_cmd,
-                    input=normalized_text.encode("utf-8"),
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    check=False,
-                )
-                wav_bytes = proc.stdout
-                err = proc.stderr
+        logger.debug("Piper process completed with return code: %d", proc.returncode)
 
-            logger.debug("Piper process completed with return code: %d", proc.returncode)
+        if not wav_bytes:
+            logger.error("No audio produced by piper")
+            print("[TTS] No audio produced")
+            error_msg = err.decode(errors="ignore")
+            logger.error("Piper stderr: %s", error_msg)
+            print(error_msg)
+            return
+        logger.debug("Audio data received: %d bytes", len(wav_bytes))
 
-            if not wav_bytes:
-                logger.error("No audio produced by piper")
-                print("[TTS] No audio produced")
-                error_msg = err.decode(errors="ignore")
-                logger.error("Piper stderr: %s", error_msg)
-                print(error_msg)
-                return
-            logger.debug("Audio data received: %d bytes", len(wav_bytes))
-
-            logger.debug("Decoding WAV data...")
-            data, sr = sf.read(io.BytesIO(wav_bytes), dtype="float32")
-            logger.debug("Audio decoded: sample_rate=%d, samples=%d", sr, data.size)
-
-            if self.cache_size > 0:
-                self._audio_cache[normalized_text] = (data, sr)
-                self._audio_cache.move_to_end(normalized_text)
-                while len(self._audio_cache) > self.cache_size:
-                    self._audio_cache.popitem(last=False)
+        logger.debug("Decoding WAV data...")
+        data, sr = sf.read(io.BytesIO(wav_bytes), dtype="float32")
+        logger.debug("Audio decoded: sample_rate=%d, samples=%d", sr, data.size)
 
         if data.size == 0:
             logger.error("Empty audio buffer after decoding")
