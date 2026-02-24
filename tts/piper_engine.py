@@ -2,9 +2,9 @@ import subprocess
 import logging
 import sounddevice as sd
 import soundfile as sf
-import io
 import os
 import re
+import tempfile
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -37,7 +37,6 @@ class PiperTTS:
         self._piper_cmd = [
             "piper",
             "--model", self.model_path,
-            "--output_file", "-",
             "--length_scale", self.length_scale,
             "--noise_scale", self.noise_scale,
             "--noise_w", self.noise_w,
@@ -59,6 +58,49 @@ class PiperTTS:
         os.environ.setdefault("OMP_NUM_THREADS", "1")
         os.environ.setdefault("ONNX_NUM_THREADS", "1")
         logger.info("PiperTTS initialized successfully")
+
+    def _select_output_device(self) -> int | None:
+        """Return a usable output device index, or None if unavailable."""
+        try:
+            default_device = sd.default.device
+            if isinstance(default_device, (list, tuple)) and len(default_device) > 1:
+                output_device = default_device[1]
+            else:
+                output_device = default_device
+
+            if output_device is not None and int(output_device) >= 0:
+                info = sd.query_devices(int(output_device))
+                if info.get("max_output_channels", 0) > 0:
+                    return int(output_device)
+        except Exception:
+            pass
+
+        try:
+            devices = sd.query_devices()
+            for index, info in enumerate(devices):
+                if info.get("max_output_channels", 0) > 0:
+                    return index
+        except Exception:
+            return None
+
+        return None
+
+    def _play_audio(self, data, sr: int) -> bool:
+        """Play audio if an output device exists."""
+        output_device = self._select_output_device()
+        if output_device is None:
+            logger.warning("No output audio device available; skipping playback")
+            print("[TTS] No output audio device available; skipping playback")
+            return False
+
+        try:
+            sd.play(data, sr, device=output_device)
+            sd.wait()
+            return True
+        except sd.PortAudioError as exc:
+            logger.error("Audio playback failed: %s", exc)
+            print(f"[TTS] Audio playback failed: {exc}")
+            return False
 
     def _normalize_text(self, text: str) -> str:
         normalized = text.strip()
@@ -92,62 +134,71 @@ class PiperTTS:
             logger.debug("Text became empty after normalization, skipping speech")
             return
 
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+            wav_path = tmp.name
+
         logger.debug("Starting piper subprocess")
         try:
             proc = subprocess.run(
-                self._piper_cmd,
+                [*self._piper_cmd, "--output_file", wav_path],
                 input=normalized_text.encode("utf-8"),
-                stdout=subprocess.PIPE,
+                stdout=subprocess.DEVNULL,
                 stderr=subprocess.PIPE,
                 check=False,
             )
         except FileNotFoundError:
             logger.error("piper binary not found")
             print("[TTS] Piper CLI not found in PATH")
+            try:
+                os.remove(wav_path)
+            except OSError:
+                pass
             return
-
-        wav_bytes = proc.stdout
-        err = proc.stderr
-
-        if proc.returncode != 0:
-            logger.warning("Piper failed with enhanced args. Falling back to baseline args")
-            fallback_cmd = [
-                "piper",
-                "--model", self.model_path,
-                "--output_file", "-",
-                "--length_scale", self.length_scale,
-            ]
-            proc = subprocess.run(
-                fallback_cmd,
-                input=normalized_text.encode("utf-8"),
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                check=False,
-            )
-            wav_bytes = proc.stdout
+        try:
             err = proc.stderr
 
-        logger.debug("Piper process completed with return code: %d", proc.returncode)
+            if proc.returncode != 0:
+                logger.warning("Piper failed with enhanced args. Falling back to baseline args")
+                fallback_cmd = [
+                    "piper",
+                    "--model", self.model_path,
+                    "--output_file", wav_path,
+                    "--length_scale", self.length_scale,
+                ]
+                proc = subprocess.run(
+                    fallback_cmd,
+                    input=normalized_text.encode("utf-8"),
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.PIPE,
+                    check=False,
+                )
+                err = proc.stderr
 
-        if not wav_bytes:
-            logger.error("No audio produced by piper")
-            print("[TTS] No audio produced")
-            error_msg = err.decode(errors="ignore")
-            logger.error("Piper stderr: %s", error_msg)
-            print(error_msg)
-            return
-        logger.debug("Audio data received: %d bytes", len(wav_bytes))
+            logger.debug("Piper process completed with return code: %d", proc.returncode)
 
-        logger.debug("Decoding WAV data...")
-        data, sr = sf.read(io.BytesIO(wav_bytes), dtype="float32")
-        logger.debug("Audio decoded: sample_rate=%d, samples=%d", sr, data.size)
+            if not os.path.exists(wav_path) or os.path.getsize(wav_path) == 0:
+                logger.error("No audio produced by piper")
+                print("[TTS] No audio produced")
+                error_msg = err.decode(errors="ignore")
+                logger.error("Piper stderr: %s", error_msg)
+                print(error_msg)
+                return
+            logger.debug("Audio file produced: %d bytes", os.path.getsize(wav_path))
 
-        if data.size == 0:
-            logger.error("Empty audio buffer after decoding")
-            print("[TTS] Empty audio buffer")
-            return
+            logger.debug("Decoding WAV data...")
+            data, sr = sf.read(wav_path, dtype="float32")
+            logger.debug("Audio decoded: sample_rate=%d, samples=%d", sr, data.size)
 
-        logger.debug("Playing audio...")
-        sd.play(data, sr)
-        sd.wait()
-        logger.info("Audio playback completed")
+            if data.size == 0:
+                logger.error("Empty audio buffer after decoding")
+                print("[TTS] Empty audio buffer")
+                return
+
+            logger.debug("Playing audio...")
+            if self._play_audio(data, sr):
+                logger.info("Audio playback completed")
+        finally:
+            try:
+                os.remove(wav_path)
+            except OSError:
+                pass
